@@ -1,107 +1,76 @@
 <?php
+/**
+ * Plugin Name: Colibri Sync
+ * Plugin URI: https://
+ * Description: Sincroniza productos desde una API externa con WooCommerce.
+ * Version: 1.0.0
+ * Author: Jose Miguel Menacho
+ * Author URI: https://example.com
+ * Text Domain: colibri-sync
+ */
 
-namespace ColibriSync\Services;
-use ColibriSync\Controllers\CheckoutController;
+defined('ABSPATH') || exit;
 
-use ColibriSync\Repositories\ProductRepository;
-
-class ProductService {
-    private $productRepository;
-
-    public function __construct() {
-        $this->productRepository = new ProductRepository();
-    }
-
-    /**
-     * Sincroniza los productos desde la API externa.
-     */
-    public function syncProducts() {
-        $response = $this->fetchExternalProducts();
-
-        // Si response es error, lanzará excepción
-        if (is_wp_error($response)) {
-            throw new \Exception('Error al consumir la API externa: ' . $response->get_error_message());
-        }
-
-        // Agrupar productos por SKU
-        $groupedProducts = $this->groupProductsBySku($response);
-
-        // Lista de SKUs sincronizados
-        $syncedSkus = [];
-
-        foreach ($groupedProducts as $sku => $variations) {
-            try {
-                $firstItem = $variations[0];
-                $productType = strtolower($firstItem['TIPO_DE_PRODUCTO']);
-                $syncedSkus[] = $sku; // Registramos el SKU como sincronizado
-
-                if ($productType === 'variable') {
-                    // Producto variable y sus variaciones
-                    $this->productRepository->saveVariableProduct($sku, $variations);
-                } else {
-                    // Producto simple
-                    $this->productRepository->saveSimpleProduct($firstItem);
-                }
-            } catch (\Exception $e) {
-                // Error con este producto específico
-                error_log('Error al procesar el producto con SKU ' . $sku . ': ' . $e->getMessage());
-                
-                // Poner en borrador si existe
-                $this->productRepository->draftProductBySku($sku);
-
-                // Continuar con el siguiente producto
-                continue;
-            }
-        }
-
-        // Desactivar productos en WooCommerce que no están en la respuesta de la API
-        // Esto se asume que se basa en los SKUs sincronizados. 
-        $this->productRepository->draftMissingProducts($syncedSkus);
-    }
-
-    /**
-     * Obtiene productos desde la API externa.
-     */
-    private function fetchExternalProducts() {
-        $apiUrl = 'https://8802-158-172-224-218.ngrok-free.app/api/test-products';
-        $response = wp_remote_get($apiUrl, ['timeout' => 60]);
-
-        if (is_wp_error($response)) {
-            throw new \Exception('Error al conectar con la API: ' . $response->get_error_message());
-        }
-
-        $body = wp_remote_retrieve_body($response);
-
-        if (empty($body)) {
-            throw new \Exception('El cuerpo de la respuesta de la API está vacío.');
-        }
-
-     $data = json_decode($body, true);
-
-// Aquí modificas para que $data contenga directamente la lista de productos
-$data = $data['original'];
-
-if (json_last_error() !== JSON_ERROR_NONE) {
-    throw new \Exception('Error al decodificar el JSON: ' . json_last_error_msg());
+if (!file_exists(__DIR__ . '/vendor/autoload.php')) {
+    wp_die('El autoloader de Composer no está disponible. Por favor, ejecuta "composer install".');
 }
 
-return $data;
+require_once __DIR__ . '/vendor/autoload.php';
+
+use ColibriSync\Controllers\ProductController;
+use ColibriSync\Services\ProductService;
+
+class ColibriSync {
+    private static $instance = null;
+
+    public static function getInstance(): ColibriSync {
+        if (is_null(self::$instance)) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
+    private function __construct() {
+        add_action('plugins_loaded', [$this, 'init']);
+
+        // Cron activation and deactivation hooks
+        register_activation_hook(__FILE__, [$this, 'activateCron']);
+        register_deactivation_hook(__FILE__, [$this, 'deactivateCron']);
+
+        // Cron job hook
+        add_action('colibri_sync_cron', [$this, 'syncProductsCronJob']);
+    }
+
+    public function init() {
+        // Inicializa tu controlador principal si lo tienes
+        new ProductController();
+    }
+
+    public function activateCron() {
+        if (!wp_next_scheduled('colibri_sync_cron')) {
+            wp_schedule_event(time(), 'hourly', 'colibri_sync_cron');
+        }
+    }
+
+    public function deactivateCron() {
+        wp_clear_scheduled_hook('colibri_sync_cron');
     }
 
     /**
-     * Agrupa productos por SKU.
+     * Esta función se ejecutará cada hora (según el cron) para mantener los productos sincronizados.
      */
-    private function groupProductsBySku(array $products) {
-        $grouped = [];
-
-        foreach ($products as $product) {
-            $sku = $product['CODIGO_SKU'];
-            if (!isset($grouped[$sku])) {
-                $grouped[$sku] = [];
-            }
-            $grouped[$sku][] = $product;
+    public function syncProductsCronJob() {
+        $service = new ProductService();
+        try {
+            $service->syncProducts();
+            // Si llega hasta aquí, la sincronización se realizó con éxito o con errores controlados.
+        } catch (Exception $e) {
+            // Error general inesperado
+            error_log("Error general en la sincronización: " . $e->getMessage());
+            // No detenemos el proceso, simplemente el cron volverá a ejecutarse en la siguiente pasada.
         }
-
-        return $grouped;
     }
 }
+
+// Inicializa el plugin
+ColibriSync::getInstance();
