@@ -1,0 +1,25 @@
+{
+  "name": "jmenacho/colibri-sync",
+  "description": "Plugin para sincronizar productos desde una API externa con WooCommerce",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
+  "authors": [
+    {
+      "name": "Tu Nombre",
+      "email": "tu-email@example.com"
+    }
+  ],
+  "require": {
+    "php": ">=7.4",
+    "guzzlehttp/guzzle": "^7.5",  
+    "symfony/http-foundation": "^6.0" 
+  },
+  "autoload": {
+    "psr-4": {
+      "ColibriSync\\": "src/"
+    }
+  },
+  "extra": {
+    "wordpress-plugin": true
+  }
+}
