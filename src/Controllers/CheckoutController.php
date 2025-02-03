@@ -18,4 +18,3 @@ class CheckoutController {
         $this->checkoutService->registerSaleInColibri($order_id);
     }
 }
-
