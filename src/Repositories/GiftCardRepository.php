@@ -9,7 +9,7 @@ class GiftCardRepository
     public function __construct()
     {
         // Ajusta la URL base de tu API Laravel (Colibri)
-        $this->baseUrl = 'https://40ca-158-172-224-218.ngrok-free.app/api'; // <--- Ajusta
+        $this->baseUrl = 'https://0d61-190-181-62-165.ngrok-free.app/api'; // <--- Ajusta
     }
 
     /**
@@ -115,3 +115,4 @@ class GiftCardRepository
         }
     }
 }
+

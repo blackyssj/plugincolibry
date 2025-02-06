@@ -6,7 +6,7 @@ class CheckoutService {
 
     public function __construct() {
         // URL base de tu API Laravel que registra ventas, por ejemplo:
-        $this->colibriApiBase = 'https://7843-158-172-224-218.ngrok-free.app';
+        $this->colibriApiBase = 'https://0d61-190-181-62-165.ngrok-free.app';
     }
 
     public function verifyStockBeforeCheckout() {

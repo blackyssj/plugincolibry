@@ -27,6 +27,12 @@ class ProductService
      *
      * @param int $product_id  El ID del producto en WooCommerce
      */
+/**
+     * Actualiza el precio y el stock de un producto en WooCommerce
+     * consultando la API de Colibri en /api/producto-detalles?codigo_unico=SKU.
+     *
+     * @param int $product_id  El ID del producto en WooCommerce
+     */
 
  public function updateProductPriceAndStock($product_id) {
         // 1. Obtener SKU del producto (asumiendo que guardas artId en _sku)
@@ -37,7 +43,7 @@ class ProductService
         }
 
         // 2. Construir la URL de la API
-        $api_url = 'https://7843-158-172-224-218.ngrok-free.app/api/producto-detalles?codigo_unico=' . urlencode($sku);
+        $api_url = 'https://0d61-190-181-62-165.ngrok-free.app/api/producto-detalles?codigo_unico=' . urlencode($sku);
 	 error_log( 'Este es el codigo skuuu'. urlencode($sku));
 
         // 3. Llamar
@@ -220,7 +226,7 @@ public function syncProducts(int $offset = 12500, int $batchSize = 900)
      */
    private function fetchExternalProducts(int $offset = 0, int $limit = 500): array
     {
-        $apiUrl = "https://7843-158-172-224-218.ngrok-free.app/api/test-products?offset={$offset}&limit={$limit}";
+        $apiUrl = "https://0d61-190-181-62-165.ngrok-free.app/api/test-products?offset={$offset}&limit={$limit}";
 
         error_log("[SYNC] Llamando a la API: {$apiUrl}");
 

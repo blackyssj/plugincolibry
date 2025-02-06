@@ -59,7 +59,7 @@ class ProductController {
      */
   private function startManualSyncSequence() {
     // Cambiar el offset inicial a 12500
-    $initialOffset = 14000; // ◀️ Valor hardcodeado aquí
+    $initialOffset = 0; // ◀️ Valor hardcodeado aquí
     update_option('colibri_sync_manual_offset', $initialOffset);
     
     // Programar primera subllamada con el offset inicial

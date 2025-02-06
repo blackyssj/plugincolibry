@@ -11,7 +11,7 @@ use WP_Query;
 class MailService
 {
     // Correo principal (to) para soporte técnico:
-    private $soporteEmail = 'soportetecnico@casaelena.com';
+    private $soporteEmail = 'jmenacho@casaelena.com.bo';
 
     // Copias (CC):
     private $ccEmails = [

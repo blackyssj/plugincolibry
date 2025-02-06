@@ -5,7 +5,7 @@
  * Description: Sincroniza productos desde una API externa con WooCommerce y registra las ventas en Colibri.
  * Version: 1.0.0
  * Author: Jose Miguel Menacho
- * Author URI: https://example.com
+ * Author URI: https://github.com/blackyssj
  * Text Domain: colibri-sync
  */
 
@@ -57,6 +57,9 @@ class ColibriSync
 
         // Hook para la secuencia manual
         add_action('colibri_sync_manual_batch', [$this, 'handleManualBatch'], 10, 1);
+	
+
+
     }
 
     public function init() {
@@ -86,18 +89,16 @@ class ColibriSync
         // add_action('woocommerce_order_status_completed',
         //            [$this->giftCardController, 'onOrderCompleted'],
         //            10, 1);
-
-        // Hook para crear la Gift Card en Colibri al pasar a "processing":
-        add_action('woocommerce_order_status_processing',
-                   [$this->giftCardController, 'onOrderProcessing'],
-                   10, 1);
+  // Hook YITH: yith_ywgc_after_gift_card_generation_save
+ add_action('yith_ywgc_after_gift_card_generation_save', [$this->giftCardController, 'onGiftCardCreatedFromYITH'], 10, 1);
+      
 
         // Hook para validar Gift Card (cupón) antes de usar
         // (usa la lógica en GiftCardController->validateGiftCardBeforeUse())
         add_filter('woocommerce_coupon_is_valid',
                    [$this->giftCardController, 'validateGiftCardBeforeUse'],
                    10, 2);
-
+    
         // Cron hook para gift cards (opcional)
         add_action('colibri_sync_giftcards_cron',
                    [$this->giftCardController, 'syncGiftCardsCron']);
@@ -106,32 +107,39 @@ class ColibriSync
     // ─────────────────────────────────────────────────────────
     // Revisión de borradores sin imagen (diario)
     // ─────────────────────────────────────────────────────────
+public function checkDraftNoImageProducts() {
+    error_log("[ColibriSync] Iniciando checkDraftNoImageProducts()");
+    
+    $args = [
+        'post_type'      => 'product',
+        'posts_per_page' => -1,
+        'post_status'    => 'draft',
+        'fields'         => 'ids',
+    ];
+    $draftProducts = get_posts($args);
+    
+    error_log("[ColibriSync] Total borradores: " . count($draftProducts));
 
-    public function checkDraftNoImageProducts() {
-        $args = [
-            'post_type'      => 'product',
-            'posts_per_page' => -1,
-            'post_status'    => 'draft',
-            'fields'         => 'ids',
-        ];
-        $draftProducts = get_posts($args);
-
-        $draftNoImage = [];
-        foreach ($draftProducts as $pId) {
-            $thumbnailId = get_post_thumbnail_id($pId);
-            if (empty($thumbnailId)) {
-                $draftNoImage[] = "ProductID=$pId (sin imagen)";
-            }
+    $draftNoImage = [];
+    foreach ($draftProducts as $pId) {
+        $thumbnailId = get_post_thumbnail_id($pId);
+        if (empty($thumbnailId)) {
+            $draftNoImage[] = "ProductID=$pId (sin imagen)";
         }
-
-        if (empty($draftNoImage)) {
-            return; // No hay borradores sin imagen
-        }
-
-        $mailService = new \ColibriSync\Services\MailService();
-        $mailService->sendDraftNoImageProductsEmail($draftNoImage);
     }
 
+    error_log("[ColibriSync] Borradores sin imagen: " . count($draftNoImage));
+
+    if (empty($draftNoImage)) {
+        error_log("[ColibriSync] No hay borradores sin imagen. Abortando envío de email.");
+        return;
+    }
+
+    $mailService = new \ColibriSync\Services\MailService();
+    $mailSent = $mailService->sendDraftNoImageProductsEmail($draftNoImage);
+    
+    error_log("[ColibriSync] ¿Email enviado? " . ($mailSent ? "Sí" : "No"));
+}
     // ─────────────────────────────────────────────────────────
     // Hooks de activación / desactivación cron
     // ─────────────────────────────────────────────────────────
@@ -152,19 +160,23 @@ class ColibriSync
         wp_clear_scheduled_hook('colibri_sync_giftcards_cron');
     }
 
+
     // ─────────────────────────────────────────────────────────
     // Sincronización automática (cron job)
     // ─────────────────────────────────────────────────────────
 
     /**
-     * Se ejecuta cada hora si deseas una sync automática (productos)
+     * Se ejecuta cada hora si deseas una sync automática
      */
     public function syncProductsCronJob() {
         error_log("[ColibriSync] syncProductsCronJob() iniciado (sync automática).");
 
         $service = new ProductService();
         try {
+            // En esta versión hace un sync en una sola pasada:
             $service->syncProducts(); 
+            // O si prefieres lotes, adaptas la lógica.
+
         } catch (\Exception $e) {
             error_log("[ColibriSync] Error en syncProductsCronJob: " . $e->getMessage());
         }
@@ -175,13 +187,13 @@ class ColibriSync
     // ─────────────────────────────────────────────────────────
 
     /**
-     * Maneja un sublote de la sincronización MANUAL (de productos).
+     * Maneja un sublote de la sincronización MANUAL.
      * Recibe un array con 'offset' => int
      */
     public function handleManualBatch($args) {
-        $offset = isset($args['offset']) ? (int)$args['offset'] : 0;
+        $offset = isset($args['offset']) ? (int)$args['offset'] : 12500;
         $batchSize = 900;  // Ajusta tu tamaño de lote
-        $delay = 3 * 60;   // Retraso (en segundos) para programar la siguiente subllamada
+        $delay = 90;   // Retraso (en segundos) para programar la siguiente subllamada
 
         error_log("[ColibriSync] handleManualBatch() => offset=$offset, batchSize=$batchSize");
 
@@ -191,12 +203,13 @@ class ColibriSync
             $result = $service->syncProducts($offset, $batchSize);
 
             if ($result === 'NO_MORE_PRODUCTS') {
+                // No hay más => reiniciar offset o dejarlo
                 error_log("[ColibriSync] Sincronización manual terminada. offset=$offset => NO_MORE_PRODUCTS");
                 update_option('colibri_sync_manual_offset', 0);
                 return;
             }
 
-            // Programar siguiente subllamada
+            // Procesó un lote => programar la siguiente subllamada
             $newOffset = $offset + $batchSize;
             update_option('colibri_sync_manual_offset', $newOffset);
 
@@ -212,7 +225,6 @@ class ColibriSync
             error_log("[ColibriSync] Error en handleManualBatch offset=$offset: " . $e->getMessage());
         }
     }
-
 
     // ─────────────────────────────────────────────────────────
     // Hooks de sincronización de precio/stock
@@ -296,11 +308,11 @@ class ColibriSync
             'email1'      => $email1,
             'carnet'      => $carnet,
             'productos'   => $productos,
-            'tipoPago'    => $tipoPago,
+            'tipoPago'    => $tipoPago,	
             'montoPagado' => $montoPagado
         ];
 
-        $url = 'https://8802-158-172-224-218.ngrok-free.app/api/ventas/crear';
+        $url = 'https://0d61-190-181-62-165.ngrok-free.app/api/ventas/crear';
 
         $response = wp_remote_post($url, [
             'headers' => ['Content-Type' => 'application/json'],
@@ -325,3 +337,4 @@ class ColibriSync
 
 // Inicializa el plugin
 ColibriSync::getInstance();
+
